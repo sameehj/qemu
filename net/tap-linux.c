@@ -47,6 +47,7 @@ int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
     unsigned int features;
 
     TFR(fd = open(PATH_NET_TUN, O_RDWR));
+    printf("tap_open fd= %d",fd);
     if (fd < 0) {
         error_setg_errno(errp, errno, "could not open %s", PATH_NET_TUN);
         return -1;
@@ -271,6 +272,7 @@ int tap_fd_enable(int fd)
     struct ifreq ifr;
     int ret;
 
+    printf("tap fd: %d", fd);
     memset(&ifr, 0, sizeof(ifr));
 
     ifr.ifr_flags = IFF_ATTACH_QUEUE;
@@ -304,7 +306,7 @@ int tap_fd_disable(int fd)
 int tap_fd_get_ifname(int fd, char *ifname)
 {
     struct ifreq ifr;
-
+    printf("tap fd: %d", fd);
     if (ioctl(fd, TUNGETIFF, &ifr) != 0) {
         error_report("TUNGETIFF ioctl() failed: %s",
                      strerror(errno));
@@ -313,4 +315,20 @@ int tap_fd_get_ifname(int fd, char *ifname)
 
     pstrcpy(ifname, sizeof(ifr.ifr_name), ifr.ifr_name);
     return 0;
+}
+
+void tap_fd_rss(int fd, struct virtio_net_hdr_rss *rss)
+{
+    struct ifreq ifr;
+
+    printf("tap fd: %d", fd);
+
+    if (ioctl(fd, TUNSETRSS, rss) != 0) {
+        error_report("TUNSETRSS ioctl() failed: %s",
+                     strerror(errno));
+    }
+    else
+    {
+    	printf("tap fd: %d TUNSETRSS ioctl() successeded", fd);
+    }
 }

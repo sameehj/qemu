@@ -925,6 +925,14 @@ free_fail:
     return 0;
 }
 
+void tap_set_rss(int fd, struct virtio_net_hdr_rss *rss)
+{
+ //   TAPState *s = DO_UPCAST(TAPState, nc, nc);
+
+    printf("tap fd: %d\n", fd);
+    tap_fd_rss(fd, rss);
+}
+
 VHostNetState *tap_get_vhost_net(NetClientState *nc)
 {
     TAPState *s = DO_UPCAST(TAPState, nc, nc);

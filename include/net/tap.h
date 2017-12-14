@@ -29,13 +29,32 @@
 #include "qemu-common.h"
 #include "qapi-types.h"
 #include "standard-headers/linux/virtio_net.h"
+#include "net/tap.h"
+#include "net/vhost_net.h"
+#include "hw/virtio/virtio.h"
+#include "hw/virtio/virtio-net.h"
+
+
+#include "standard-headers/linux/virtio_ring.h"
+#include "hw/virtio/vhost.h"
+#include "hw/virtio/virtio-bus.h"
 
 int tap_enable(NetClientState *nc);
 int tap_disable(NetClientState *nc);
 
 int tap_get_fd(NetClientState *nc);
 
-struct vhost_net;
+//struct vhost_net;
+
+struct vhost_net {
+    struct vhost_dev dev;
+    struct vhost_virtqueue vqs[2];
+    int backend;
+    NetClientState *nc;
+};
+
+
 struct vhost_net *tap_get_vhost_net(NetClientState *nc);
+void tap_fd_rss(int fd, struct virtio_net_hdr_rss *rss);
 
 #endif /* QEMU_NET_TAP_H */

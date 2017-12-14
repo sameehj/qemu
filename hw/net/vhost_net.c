@@ -37,13 +37,6 @@
 #include "hw/virtio/vhost.h"
 #include "hw/virtio/virtio-bus.h"
 
-struct vhost_net {
-    struct vhost_dev dev;
-    struct vhost_virtqueue vqs[2];
-    int backend;
-    NetClientState *nc;
-};
-
 /* Features supported by host kernel. */
 static const int kernel_feature_bits[] = {
     VIRTIO_F_NOTIFY_ON_EMPTY,
@@ -52,6 +45,7 @@ static const int kernel_feature_bits[] = {
     VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_F_VERSION_1,
     VIRTIO_NET_F_MTU,
+    VIRTIO_NET_F_CTRL_RSS,
     VIRTIO_F_IOMMU_PLATFORM,
     VHOST_INVALID_FEATURE_BIT
 };
@@ -77,6 +71,7 @@ static const int user_feature_bits[] = {
     VIRTIO_NET_F_HOST_UFO,
     VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_NET_F_MTU,
+    VIRTIO_NET_F_CTRL_RSS,
     VIRTIO_F_IOMMU_PLATFORM,
 
     /* This bit implies RARP isn't sent by QEMU out of band */
@@ -129,7 +124,7 @@ uint64_t vhost_net_get_acked_features(VHostNetState *net)
     return net->dev.acked_features;
 }
 
-static int vhost_net_get_fd(NetClientState *backend)
+int vhost_net_get_fd(NetClientState *backend)
 {
     switch (backend->info->type) {
     case NET_CLIENT_DRIVER_TAP:

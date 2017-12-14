@@ -56,6 +56,8 @@
 #define VIRTIO_NET_F_MQ	22	/* Device supports Receive Flow
 					 * Steering */
 #define VIRTIO_NET_F_CTRL_MAC_ADDR 23	/* Set MAC address */
+#define VIRTIO_NET_F_CTRL_RSS 24	/* Set RSS */
+
 
 #ifndef VIRTIO_NET_NO_LEGACY
 #define VIRTIO_NET_F_GSO	6	/* Host handles pkts w/ any GSO type */
@@ -116,6 +118,18 @@ struct virtio_net_hdr {
 	__virtio16 gso_size;		/* Bytes to append to hdr_len per frame */
 	__virtio16 csum_start;	/* Position to start checksumming from */
 	__virtio16 csum_offset;	/* Offset after that to place checksum */
+};
+
+struct virtio_net_header_rss {
+	/* See VIRTIO_NET_HDR_F_* */
+	uint8_t flags;
+	/* See VIRTIO_NET_HDR_GSO_* */
+	uint8_t gso_type;
+	__virtio16 hdr_len;		/* Ethernet + IP + tcp/udp hdrs */
+	__virtio16 gso_size;		/* Bytes to append to hdr_len per frame */
+	__virtio16 csum_start;	/* Position to start checksumming from */
+	__virtio16 csum_offset;	/* Offset after that to place checksum */
+	__virtio32 rss_hash_value;
 };
 
 /* This is the version of the header to use when the MRG_RXBUF
@@ -244,5 +258,16 @@ struct virtio_net_ctrl_mq {
  */
 #define VIRTIO_NET_CTRL_GUEST_OFFLOADS   5
 #define VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET        0
+
+
+/*
+* RSS
+*
+* Dynamic offloads are available with the
+* VIRTIO_NET_F_CTRL_GUEST_OFFLOADS feature bit.
+*/
+#define VIRTIO_NET_CTRL_RSS            6
+#define VIRTIO_NET_CTRL_RSS_SET        0
+
 
 #endif /* _LINUX_VIRTIO_NET_H */

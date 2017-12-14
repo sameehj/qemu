@@ -101,6 +101,13 @@ typedef struct VirtIONet {
     bool mtu_bypass_backend;
 } VirtIONet;
 
+struct virtio_net_hdr_rss {
+    __virtio32 rss_hash_function;
+    __virtio32 rss_hash_key[40];
+    __virtio32 rss_indirection_table_length;
+    __virtio32 rss_indirection_table[128];
+};
+
 void virtio_net_set_netclient_name(VirtIONet *n, const char *name,
                                    const char *type);
 
