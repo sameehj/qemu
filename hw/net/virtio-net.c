@@ -26,6 +26,7 @@
 #include "qapi-event.h"
 #include "hw/virtio/virtio-access.h"
 #include "migration/misc.h"
+#include "net/tap_int.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -591,7 +592,9 @@ static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features,
     features |= n->host_features;
 
     virtio_add_feature(&features, VIRTIO_NET_F_MAC);
-
+    virtio_add_feature(&features, VIRTIO_NET_F_CTRL_RSS);
+ printf(" !!!host_featuress = %ux \n", n->host_features );
+ printf(" !!!featuress = %lux \n", features );
     if (!peer_has_vnet_hdr(n)) {
         virtio_clear_feature(&features, VIRTIO_NET_F_CSUM);
         virtio_clear_feature(&features, VIRTIO_NET_F_HOST_TSO4);
@@ -610,6 +613,7 @@ static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features,
     }
 
     if (!get_vhost_net(nc->peer)) {
+ printf(" get_vhost_net(nc->peer)) !! featuress = %lux \n", features );
         return features;
     }
     features = vhost_net_get_features(get_vhost_net(nc->peer), features);
@@ -671,7 +675,10 @@ static void virtio_net_set_features(VirtIODevice *vdev, uint64_t features)
     VirtIONet *n = VIRTIO_NET(vdev);
     int i;
 
-    if (n->mtu_bypass_backend &&
+ printf("%s 11111!!!host_features = %x \n", __func__ ,n->host_features );
+ printf("%s 111111!!!features = %lx \n", __func__ ,features );
+ 
+ if (n->mtu_bypass_backend &&
             !virtio_has_feature(vdev->backend_features, VIRTIO_NET_F_MTU)) {
         features &= ~(1ULL << VIRTIO_NET_F_MTU);
     }
@@ -705,6 +712,9 @@ static void virtio_net_set_features(VirtIODevice *vdev, uint64_t features)
     } else {
         memset(n->vlans, 0xff, MAX_VLAN >> 3);
     }
+ printf("%s 222222!!!host_features = %x \n", __func__ ,n->host_features );
+ printf("%s 222222!!!features = %lx \n", __func__ ,features );
+
 }
 
 static int virtio_net_handle_rx_mode(VirtIONet *n, uint8_t cmd,
@@ -956,6 +966,61 @@ static int virtio_net_handle_mq(VirtIONet *n, uint8_t cmd,
     return VIRTIO_NET_OK;
 }
 
+
+static void print_zbar(uint32_t * buf, uint32_t size)
+{
+	int i =0;
+	for(i=0;i<size;i++)
+	{
+
+	    printf("buf[%d] = %u\n", i, buf[i]);
+	}
+}
+
+static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
+                                        struct iovec *iov, unsigned int iov_cnt)
+{
+   // VirtIODevice *vdev = VIRTIO_DEVICE(n);
+   // uint16_t vid;
+    size_t s;
+    struct virtio_net_hdr_rss rss;
+    NetClientState *nc;
+    //NetClientState *peer;
+
+    s = iov_to_buf(iov, iov_cnt, 0, &rss, sizeof(rss));
+
+    if (cmd == VIRTIO_NET_CTRL_RSS_SET)
+    {
+	    printf("yessssss wohoooooooooooo!!!\n");
+	    printf("yessssss rss_hash_function: %u \n", rss.rss_hash_function);
+	    printf("yessssss rss.rss_hash_key:\n" );
+	    print_zbar(rss.rss_hash_key, 40);
+	    printf("yesssss rss_table length = %u \n", rss.rss_indirection_table_length);
+	    print_zbar(rss.rss_indirection_table, rss.rss_indirection_table_length);
+	    printf("yessssss  s (size) = 0x%lx \n", s);
+	    printf("yessssss wohoooooooooooo!!!\n");
+        nc = qemu_get_queue(n->nic);
+
+        if (!nc->peer) {
+            printf("We are doomed\n");
+            return 0;
+        }
+
+        if (nc->peer->info->type != NET_CLIENT_DRIVER_TAP) {
+            printf("For sure!\n");
+            return 0;
+        }
+	//struct vhost_net * vhostnet = get_vhost_net(nc->peer);
+	int fd = vhost_net_get_fd(nc->peer);
+
+
+//	peer = n->nic_conf.peers.ncs[0];
+//	struct vhost_net * vhostnet = get_vhost_net(peer);
+        tap_set_rss(fd, &rss);
+    }
+    return VIRTIO_NET_OK;
+}
+
 static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
 {
     VirtIONet *n = VIRTIO_NET(vdev);
@@ -997,7 +1062,10 @@ static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
             status = virtio_net_handle_mq(n, ctrl.cmd, iov, iov_cnt);
         } else if (ctrl.class == VIRTIO_NET_CTRL_GUEST_OFFLOADS) {
             status = virtio_net_handle_offloads(n, ctrl.cmd, iov, iov_cnt);
-        }
+        } else if (ctrl.class == VIRTIO_NET_CTRL_RSS) {
+            status = virtio_net_rss(n, ctrl.cmd, iov, iov_cnt);
+	}
+
 
         s = iov_from_buf(elem->in_sg, elem->in_num, 0, &status, sizeof(status));
         assert(s == sizeof(status));
@@ -1907,6 +1975,7 @@ static void virtio_net_set_config_size(VirtIONet *n, uint64_t host_features)
 {
     int i, config_size = 0;
     virtio_add_feature(&host_features, VIRTIO_NET_F_MAC);
+    virtio_add_feature(&host_features, VIRTIO_NET_F_CTRL_RSS);
 
     for (i = 0; feature_sizes[i].flags != 0; i++) {
         if (host_features & feature_sizes[i].flags) {
@@ -2148,6 +2217,8 @@ static Property virtio_net_properties[] = {
     DEFINE_PROP_BIT("ctrl_guest_offloads", VirtIONet, host_features,
                     VIRTIO_NET_F_CTRL_GUEST_OFFLOADS, true),
     DEFINE_PROP_BIT("mq", VirtIONet, host_features, VIRTIO_NET_F_MQ, false),
+    DEFINE_PROP_BIT("rss", VirtIONet, host_features,
+		    VIRTIO_NET_F_CTRL_RSS , true),
     DEFINE_NIC_PROPERTIES(VirtIONet, nic_conf),
     DEFINE_PROP_UINT32("x-txtimer", VirtIONet, net_conf.txtimer,
                        TX_TIMER_INTERVAL),

@@ -28,6 +28,8 @@
 
 #include "qemu-common.h"
 #include "qapi-types.h"
+#include "hw/virtio/virtio.h"
+#include "hw/virtio/virtio-net.h"
 
 int tap_open(char *ifname, int ifname_size, int *vnet_hdr,
              int vnet_hdr_required, int mq_required, Error **errp);
@@ -45,5 +47,7 @@ int tap_fd_set_vnet_be(int fd, int vnet_is_be);
 int tap_fd_enable(int fd);
 int tap_fd_disable(int fd);
 int tap_fd_get_ifname(int fd, char *ifname);
+void tap_set_rss(int fd, struct virtio_net_hdr_rss *rss);
+
 
 #endif /* NET_TAP_INT_H */
