@@ -16,6 +16,7 @@
 #include <rte_ethdev_driver.h>
 #include <rte_ether.h>
 #include "tap_log.h"
+#include "tap_rss.h"
 
 #ifdef IFF_MULTI_QUEUE
 #define RTE_PMD_TAP_MAX_QUEUES	TAP_MAX_QUEUES
@@ -53,30 +54,42 @@ struct tx_queue {
 	struct pkt_stats stats;         /* Stats for this TX queue */
 };
 
+//struct pmd_internals {
+//	struct rte_eth_dev *dev;          /* Ethernet device. */
+//	char remote_iface[RTE_ETH_NAME_MAX_LEN]; /* Remote netdevice name */
+//	char name[RTE_ETH_NAME_MAX_LEN];  /* Internal Tap device name */
+//	struct ether_addr eth_addr;       /* Mac address of the device port */
+//	struct ifreq remote_initial_flags;   /* Remote netdevice flags on init */
+//	int remote_if_index;              /* remote netdevice IF_INDEX */
+//	int if_index;                     /* IF_INDEX for the port */
+//	int ioctl_sock;                   /* socket for ioctl calls */
+//	int nlsk_fd;                      /* Netlink socket fd */
+//	int flow_isolate;                 /* 1 if flow isolation is enabled */
+//	int flower_support;               /* 1 if kernel supports, else 0 */
+//	int flower_vlan_support;          /* 1 if kernel supports, else 0 */
+//	int rss_enabled;                  /* 1 if RSS is enabled, else 0 */
+//	/* implicit rules set when RSS is enabled */
+//	int map_fd;                       /* BPF RSS map fd */
+//	int bpf_fd[RTE_PMD_TAP_MAX_QUEUES];/* List of bpf fds per queue */
+//	LIST_HEAD(tap_rss_flows, rte_flow) rss_flows;
+//	LIST_HEAD(tap_flows, rte_flow) flows;        /* rte_flow rules */
+//	/* implicit rte_flow rules set when a remote device is active */
+//	LIST_HEAD(tap_implicit_flows, rte_flow) implicit_flows;
+//	struct rx_queue rxq[RTE_PMD_TAP_MAX_QUEUES]; /* List of RX queues */
+//	struct tx_queue txq[RTE_PMD_TAP_MAX_QUEUES]; /* List of TX queues */
+//	struct rte_intr_handle intr_handle;          /* LSC interrupt handle. */
+//};
+
+
 struct pmd_internals {
-	struct rte_eth_dev *dev;          /* Ethernet device. */
-	char remote_iface[RTE_ETH_NAME_MAX_LEN]; /* Remote netdevice name */
-	char name[RTE_ETH_NAME_MAX_LEN];  /* Internal Tap device name */
-	struct ether_addr eth_addr;       /* Mac address of the device port */
-	struct ifreq remote_initial_flags;   /* Remote netdevice flags on init */
-	int remote_if_index;              /* remote netdevice IF_INDEX */
 	int if_index;                     /* IF_INDEX for the port */
 	int ioctl_sock;                   /* socket for ioctl calls */
 	int nlsk_fd;                      /* Netlink socket fd */
-	int flow_isolate;                 /* 1 if flow isolation is enabled */
-	int flower_support;               /* 1 if kernel supports, else 0 */
-	int flower_vlan_support;          /* 1 if kernel supports, else 0 */
 	int rss_enabled;                  /* 1 if RSS is enabled, else 0 */
 	/* implicit rules set when RSS is enabled */
 	int map_fd;                       /* BPF RSS map fd */
 	int bpf_fd[RTE_PMD_TAP_MAX_QUEUES];/* List of bpf fds per queue */
 	LIST_HEAD(tap_rss_flows, rte_flow) rss_flows;
-	LIST_HEAD(tap_flows, rte_flow) flows;        /* rte_flow rules */
-	/* implicit rte_flow rules set when a remote device is active */
-	LIST_HEAD(tap_implicit_flows, rte_flow) implicit_flows;
-	struct rx_queue rxq[RTE_PMD_TAP_MAX_QUEUES]; /* List of RX queues */
-	struct tx_queue txq[RTE_PMD_TAP_MAX_QUEUES]; /* List of TX queues */
-	struct rte_intr_handle intr_handle;          /* LSC interrupt handle. */
 };
 
 /* tap_intr.c */

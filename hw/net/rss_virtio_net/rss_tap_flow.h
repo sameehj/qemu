@@ -8,8 +8,9 @@
 
 #include <rte_flow.h>
 #include <rte_flow_driver.h>
-#include <rte_eth_tap.h>
-#include <tap_autoconf.h>
+#include "tap/rte_eth_tap.h"
+//#include <tap_autoconf.h>
+#include <linux/types.h>
 
 /**
  * In TC, priority 0 means we require the kernel to allocate one for us.
@@ -45,6 +46,9 @@ enum bpf_fd_idx {
 	SEC_L3_L4,
 	SEC_MAX,
 };
+
+
+
 /*
 int tap_dev_filter_ctrl(struct rte_eth_dev *dev,
 			enum rte_filter_type filter_type,
@@ -59,6 +63,8 @@ int tap_flow_implicit_destroy(struct pmd_internals *pmd,
 int tap_flow_implicit_flush(struct pmd_internals *pmd,
 			    struct rte_flow_error *error);
 */
+int pmd_init(struct pmd_internals *p);
+int rss_enable(struct rss_internals *rss_internals);
 int tap_flow_bpf_cls_q(__u32 queue_idx);
 int tap_flow_bpf_calc_l3_l4_hash(__u32 key_idx, int map_fd);
 int tap_flow_bpf_rss_map_create(unsigned int key_size, unsigned int value_size,

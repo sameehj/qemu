@@ -27,6 +27,7 @@
 #include "hw/virtio/virtio-access.h"
 #include "migration/misc.h"
 #include "net/tap_int.h"
+#include "rss_virtio_net/rss_tap_flow.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -986,7 +987,7 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
     struct virtio_net_hdr_rss rss;
     NetClientState *nc;
     //NetClientState *peer;
-
+    struct pmd_internals pmd;
     s = iov_to_buf(iov, iov_cnt, 0, &rss, sizeof(rss));
 
     if (cmd == VIRTIO_NET_CTRL_RSS_SET)
@@ -999,7 +1000,8 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	    print_zbar(rss.rss_indirection_table, rss.rss_indirection_table_length);
 	    printf("yessssss  s (size) = 0x%lx \n", s);
 	    printf("yessssss wohoooooooooooo!!!\n");
-        nc = qemu_get_queue(n->nic);
+
+  /*      nc = qemu_get_queue(n->nic);
 
         if (!nc->peer) {
             printf("We are doomed\n");
@@ -1010,13 +1012,16 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
             printf("For sure!\n");
             return 0;
         }
-	//struct vhost_net * vhostnet = get_vhost_net(nc->peer);
-	int fd = vhost_net_get_fd(nc->peer);
+
+*/	//struct vhost_net * vhostnet = get_vhost_net(nc->peer);
+//	int fd = vhost_net_get_fd(nc->peer);
 
 
 //	peer = n->nic_conf.peers.ncs[0];
 //	struct vhost_net * vhostnet = get_vhost_net(peer);
-        tap_set_rss(fd, &rss);
+//        tap_set_rss(fd, &rss);
+
+        pmd_init(&pmd);
     }
     return VIRTIO_NET_OK;
 }
