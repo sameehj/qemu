@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <linux/bpf.h>
 
 static int bpf_load(enum bpf_prog_type type, const struct bpf_insn *insns,

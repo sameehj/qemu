@@ -1,5 +1,12 @@
+#include <unistd.h>
+#include <sys/syscall.h>   /* For SYS_xxx definitions */
+
 #include "rss_bpf_api.h"
-,
+#include "bpf_rss_insns.h"
+
+#define RTE_DIM(a) (sizeof (a) / sizeof ((a)[0]))
+
+
 /**
  * Load BPF program (section l3_l4) into the kernel and return a bpf fd.
  *
@@ -14,7 +21,7 @@
  */
 int tap_flow_bpf_calc_l3_l4_hash(__u32 key_idx, int map_fd)
 {
-	l3_l4_hash_insns[4].imm = key_idx; //immidiate argument to compiled bpf program
+//	l3_l4_hash_insns[4].imm = key_idx; //immidiate argument to compiled bpf program
 	l3_l4_hash_insns[9].imm = map_fd;
 
 	return bpf_load(BPF_PROG_TYPE_SCHED_ACT,
@@ -117,7 +124,7 @@ int tap_flow_bpf_rss_map_create(unsigned int key_size,
 	union bpf_attr attr = {};
 
 	bzero(&attr, sizeof(attr));
-	attr.map_type    = BPF_MAP_TYPE_HASH;
+	attr.map_type    = BPF_MAP_TYPE_ARRAY;
 	attr.key_size    = key_size;
 	attr.value_size  = value_size;
 	attr.max_entries = max_entries;

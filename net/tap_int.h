@@ -48,6 +48,7 @@ int tap_fd_enable(int fd);
 int tap_fd_disable(int fd);
 int tap_fd_get_ifname(int fd, char *ifname);
 void tap_set_rss(int fd, struct virtio_net_hdr_rss *rss);
+void tap_set_bpf(int fd, int bpf_fd);
 
 
 #endif /* NET_TAP_INT_H */

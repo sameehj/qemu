@@ -54,18 +54,14 @@ struct bpf_elf_map {
     __u32 size_key;
     __u32 size_value;
     __u32 max_elem;
-    __u32 id;
-    __u32 pinning;
 };
 
 struct bpf_elf_map __attribute__((section("maps"), used))
-map_keys = {
-	.type           =       BPF_MAP_TYPE_HASH,
-	.id             =       BPF_MAP_ID_KEY,
+map_rss = {
+	.type           =       BPF_MAP_TYPE_ARRAY,
 	.size_key       =       sizeof(__u32),
-	.size_value     =       sizeof(struct rss_key),
-	.max_elem       =       256,
-	.pinning        =       PIN_GLOBAL_NS,
+	.size_value     =       sizeof(virtio_net_hdr_rss),
+	.max_elem       =       1,
 };
 
 /*
@@ -120,9 +116,9 @@ rte_softrss_be(const __u32 *input_tuple, const uint8_t *rss_key,
 #pragma unroll
 		for (i = 0; i < 32; i++) {
 			if (input_tuple[j] & (1 << (31 - i))) {
-				hash ^= ((const __u32 *)def_rss_key)[j] << i |
+				hash ^= ((const __u32 *)rss_key)[j] << i |
 				(__u32)((uint64_t)
-				(((const __u32 *)def_rss_key)[j + 1])
+				(((const __u32 *)rss_key)[j + 1])
 					>> (32 - i));
 			}
 		}
@@ -138,19 +134,21 @@ rss_l3_l4(struct __sk_buff *skb)
 	__u16 proto = (__u16)skb->protocol;
 	__u32 key_idx = 0xdeadbeef;
 	__u32 hash;
-	struct rss_key *rsskey;
+	struct virtio_net_hdr_rss * rss_conf;
+	//struct rss_key *rsskey;
 	__u64 off = ETH_HLEN;
 	int j;
 	__u8 *key = 0;
 	__u32 len;
 	__u32 queue = 0;
 
-	rsskey = bpf_map_lookup_elem(&map_keys, &key_idx);
-	if (!rsskey) {
+	rss_conf = bpf_map_lookup_elem(&map_rss, 0);
+	if (!rss_conf) {
 		printt("hash(): rss key is not configured\n");
 		return -2;
 	}
-	key = (__u8 *)rsskey->key;
+	key = (__u8 *)rss_conf->rss_hash_key;
+	key = (__u8 *)rss_conf->rss_hash_key;
 
 	/* Get correct proto for 802.1ad */
 	if (skb->vlan_present && skb->vlan_proto == htons(ETH_P_8021AD)) {

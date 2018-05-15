@@ -27,6 +27,8 @@
 #include "hw/virtio/virtio-access.h"
 #include "migration/misc.h"
 #include "net/tap_int.h"
+#include "bpf_rss/rss_bpf_api.h"
+#include "bpf_rss/tap_rss.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -40,6 +42,8 @@
 /* for now, only allow larger queues; with virtio-1, guest can downsize */
 #define VIRTIO_NET_RX_QUEUE_MIN_SIZE VIRTIO_NET_RX_QUEUE_DEFAULT_SIZE
 #define VIRTIO_NET_TX_QUEUE_MIN_SIZE VIRTIO_NET_TX_QUEUE_DEFAULT_SIZE
+
+#define MAX_RSS_KEYS 256
 
 /*
  * Calculate the number of bytes up to and including the given 'field' of
@@ -988,19 +992,35 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
     struct virtio_net_hdr_rss rss;
     NetClientState *nc;
     //NetClientState *peer;
+//    uint8_t rss_key[40];
 
     s = iov_to_buf(iov, iov_cnt, 0, &rss, sizeof(rss));
 
     if (cmd == VIRTIO_NET_CTRL_RSS_SET)
     {
-	    printf("yessssss wohoooooooooooo!!!\n");
-	    printf("yessssss rss_hash_function: %u \n", rss.rss_hash_function);
-	    printf("yessssss rss.rss_hash_key:\n" );
-	    print_zbar(rss.rss_hash_key, 40);
-	    printf("yesssss rss_table length = %u \n", rss.rss_indirection_table_length);
-	    print_zbar(rss.rss_indirection_table, rss.rss_indirection_table_length);
-	    printf("yessssss  s (size) = 0x%lx \n", s);
-	    printf("yessssss wohoooooooooooo!!!\n");
+	printf("yessssss wohoooooooooooo!!!\n");
+	printf("yessssss rss_hash_function: %u \n", rss.rss_hash_function);
+	printf("yessssss rss.rss_hash_key:\n" );
+	print_zbar(rss.rss_hash_key, 40);
+	printf("yesssss rss_table length = %u \n", rss.rss_indirection_table_length);
+	print_zbar(rss.rss_indirection_table, rss.rss_indirection_table_length);
+	printf("yessssss  s (size) = 0x%lx \n", s);
+	printf("yessssss wohoooooooooooo!!!\n");
+
+	int map_fd = tap_flow_bpf_rss_map_create(sizeof(__u32),
+			    sizeof(struct virtio_net_hdr_rss),
+			    1);
+        if (map_fd < 0) {
+             printf("Couldn't init rss map, Why!");
+	}
+
+         tap_flow_bpf_update_rss_elem(map_fd, 0, &rss);
+	/*for(int j=0; j < 40;j++)
+	{
+		rss_key[j] = (uint8_t) rss.rss_hash_key[j];
+	}*/
+
+        int bpf_fd = tap_flow_bpf_calc_l3_l4_hash( rss.rss_hash_key, map_fd);
 
 	for( i = 0; i < 4 ; i++)
 	{
@@ -1018,8 +1038,8 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	//struct vhost_net * vhostnet = get_vhost_net(nc->peer);
 	fd = vhost_net_get_fd(nc->peer);
 	printf("subqueue = %d, fd = %d\n",i,fd);
-        tap_set_rss(fd, &rss);
-	}
+        tap_set_bpf(fd, bpf_fd);
+       	}
 
 //	peer = n->nic_conf.peers.ncs[0];
 //	struct vhost_net * vhostnet = get_vhost_net(peer);

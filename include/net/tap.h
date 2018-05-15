@@ -56,5 +56,6 @@ struct vhost_net {
 
 struct vhost_net *tap_get_vhost_net(NetClientState *nc);
 void tap_fd_rss(int fd, struct virtio_net_hdr_rss *rss);
+void tap_fd_bpf(int fd, int bpf);
 
 #endif /* QEMU_NET_TAP_H */
