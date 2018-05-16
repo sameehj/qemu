@@ -1,10 +1,17 @@
 #include <unistd.h>
+#include <string.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
 #include "rss_bpf_api.h"
 #include "bpf_rss_insns.h"
 
 #define RTE_DIM(a) (sizeof (a) / sizeof ((a)[0]))
+
+
+static int bpf_load(enum bpf_prog_type type,
+		  const struct bpf_insn *insns,
+		  size_t insns_cnt,
+		  const char *license);
 
 
 /**
