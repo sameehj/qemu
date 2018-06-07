@@ -18,6 +18,7 @@
 #include <linux/bpf.h>
 
 #include "tap_rss.h"
+#include "rss_bpf_api.h"
 
 /** Create IPv4 address */
 #define IPv4(a, b, c, d) ((__u32)(((a) & 0xff) << 24) | \
@@ -48,6 +49,14 @@ struct vlan_hdr {
 	__be16 tci;
 };
 
+struct virtio_net_hdr_rss {
+    __u32 rss_hash_function;
+    __u32 hash_function_flags;
+    uint8_t rss_hash_key[40];
+    __u32 rss_indirection_table_length;
+    uint8_t rss_indirection_table[128];
+};
+
 /* Used map structure */
 struct bpf_elf_map {
     __u32 type;
@@ -60,7 +69,7 @@ struct bpf_elf_map __attribute__((section("maps"), used))
 map_rss = {
 	.type           =       BPF_MAP_TYPE_ARRAY,
 	.size_key       =       sizeof(__u32),
-	.size_value     =       sizeof(virtio_net_hdr_rss),
+	.size_value     =       sizeof(struct virtio_net_hdr_rss),
 	.max_elem       =       1,
 };
 
@@ -135,7 +144,7 @@ rss_l3_l4(struct __sk_buff *skb)
 	__u32 key_idx = 0xdeadbeef;
 	__u32 hash;
 	struct virtio_net_hdr_rss * rss_conf;
-	//struct rss_key *rsskey;
+	struct rss_key *rsskey;
 	__u64 off = ETH_HLEN;
 	int j;
 	__u8 *key = 0;
@@ -182,7 +191,7 @@ rss_l3_l4(struct __sk_buff *skb)
 					*(src_dst_port + 3)),
 		};
 		__u8 input_len = sizeof(v4_tuple) / sizeof(__u32);
-		if (rsskey->hash_fields & (1 << HASH_FIELD_IPV4_L3))
+		if (rss_conf->hash_function_flags & (1 << HASH_FIELD_IPV4_L3))
 			input_len--;
 		hash = rte_softrss_be((__u32 *)&v4_tuple, key, 3);
 	} else if (proto == htons(ETH_P_IPV6)) {
@@ -208,7 +217,7 @@ rss_l3_l4(struct __sk_buff *skb)
 			      *(src_dst_port + 3));
 
 		__u8 input_len = sizeof(v6_tuple) / sizeof(__u32);
-		if (rsskey->hash_fields & (1 << HASH_FIELD_IPV6_L3))
+		if (rss_conf->hash_function_flags & (1 << HASH_FIELD_IPV6_L3))
 			input_len--;
 		hash = rte_softrss_be((__u32 *)&v6_tuple, key, 9);
 	} else {

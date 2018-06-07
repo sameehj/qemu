@@ -1,6 +1,15 @@
 #include <stdlib.h>
 #include <linux/bpf.h>
 
+/*struct rss_key {
+	 __u8 key[128];
+	__u32 hash_fields;
+	__u32 key_size;
+	__u32 queues[TAP_MAX_QUEUES];
+	__u32 nb_queues;
+} __attribute__((packed));
+*/
+
 //static int bpf_load(enum bpf_prog_type type, const struct bpf_insn *insns,
 //		size_t insns_cnt, const char *license);
 
