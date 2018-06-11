@@ -220,13 +220,13 @@ rss_l3_l4(struct __sk_buff *skb)
 	return queue;
 }
 
-//__section(l3_l4)
+#define RSS(L)                                          \
+        __section(#L) int                               \
+                L ## _hash(struct __sk_buff *skb)       \
+        {                                               \
+                return rss_ ## L (skb);                 \
+        }
 
-int RSS_l3_l4(struct __sk_buff *skb)
-{
-    return rss_l3_l4(skb);
-}
+RSS(l3_l4)
 
 BPF_LICENSE("Dual BSD/GPL");
-
-//char ____license[] __section_license = "Dual BSD/GPL";
