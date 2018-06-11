@@ -18,6 +18,7 @@
 #include <linux/bpf.h>
 
 #include "tap_rss.h"
+#include "bpf_api.h"
 #include "rss_bpf_api.h"
 
 /** Create IPv4 address */
@@ -28,11 +29,6 @@
 
 #define PORT(a, b) ((__u16)(((a) & 0xff) << 8) | \
 		((b) & 0xff))
-
-#ifndef BPF_LICENSE
-# define BPF_LICENSE(NAME)						\
-	char ____license[] __section_license = NAME
-#endif
 
 /*
  * The queue number is offset by a unique QUEUE_OFFSET, to distinguish
@@ -55,14 +51,6 @@ struct virtio_net_hdr_rss {
     uint8_t rss_hash_key[40];
     __u32 rss_indirection_table_length;
     uint8_t rss_indirection_table[128];
-};
-
-/* Used map structure */
-struct bpf_elf_map {
-    __u32 type;
-    __u32 size_key;
-    __u32 size_value;
-    __u32 max_elem;
 };
 
 struct bpf_elf_map __attribute__((section("maps"), used))
@@ -239,6 +227,6 @@ int RSS_l3_l4(struct __sk_buff *skb)
     return rss_l3_l4(skb);
 }
 
-//BPF_LICENSE("Dual BSD/GPL");
+BPF_LICENSE("Dual BSD/GPL");
 
 //char ____license[] __section_license = "Dual BSD/GPL";
