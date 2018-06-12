@@ -3,6 +3,7 @@
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
 #include "rss_bpf_api.h"
+#include "rss_bpf_insns.h"
 
 #define RTE_DIM(a) (sizeof (a) / sizeof ((a)[0]))
 

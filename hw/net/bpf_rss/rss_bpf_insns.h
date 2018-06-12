@@ -1,4 +1,7 @@
-#include <bpf_api.h>
+#include <linux/bpf.h>
+
+#ifndef BPF_RSS_INSNS
+#define BPF_RSS_INSNS
 
 /* bpf_insn array matching l3_l4 section. see tap_bpf_program.c file */
 struct bpf_insn l3_l4_hash_insns[] = {
@@ -3953,3 +3956,5 @@ struct bpf_insn l3_l4_hash_insns[] = {
 {0xbf ,0x0 ,0x1 ,0x0000, 0x00000000},
 {0x95 ,0x0 ,0x0 ,0x0000, 0x00000000}, 
 };
+
+#endif
