@@ -1007,6 +1007,7 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	printf("yessssss  s (size) = 0x%lx \n", s);
 	printf("yessssss wohoooooooooooo!!!\n");
 
+
 	int map_fd = tap_flow_bpf_rss_map_create(sizeof(__u32),
 			    sizeof(struct virtio_net_hdr_rss),
 			    1);
@@ -1015,12 +1016,15 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	}
 
          tap_flow_bpf_update_rss_elem(map_fd, 0, &rss);
+
+	 int bpf_fd = tap_flow_bpf_load_rss_program(map_fd);
 	/*for(int j=0; j < 40;j++)
 	{
 		rss_key[j] = (uint8_t) rss.rss_hash_key[j];
 	}*/
 
-        int bpf_fd = tap_flow_bpf_calc_l3_l4_hash( rss.rss_hash_key, map_fd);
+
+        //int bpf_fd = tap_flow_bpf_calc_l3_l4_hash( rss.rss_hash_key, map_fd);
 
 	for( i = 0; i < 4 ; i++)
 	{

@@ -3,7 +3,6 @@
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
 
 #include "rss_bpf_api.h"
-#include "bpf_rss_insns.h"
 
 #define RTE_DIM(a) (sizeof (a) / sizeof ((a)[0]))
 
@@ -107,6 +106,16 @@ static int bpf_load(enum bpf_prog_type type,
 	attr.kern_version = 0;
 
 	return sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+}
+
+int tap_flow_bpf_load_rss_program(int map_fd)
+{
+	l3_l4_hash_insns[9].imm = map_fd;
+
+	return bpf_load(BPF_PROG_TYPE_SOCKET_FILTER,
+		(struct bpf_insn *)l3_l4_hash_insns,
+		RTE_DIM(l3_l4_hash_insns),
+		"Dual BSD/GPL");
 }
 
 /**

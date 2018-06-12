@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <linux/bpf.h>
+#include <rss_bpf_insns.h>
 
 /*struct rss_key {
 	 __u8 key[128];
@@ -12,6 +13,8 @@
 
 //static int bpf_load(enum bpf_prog_type type, const struct bpf_insn *insns,
 //		size_t insns_cnt, const char *license);
+
+int tap_flow_bpf_load_rss_program(nt map_fd);
 
 int tap_flow_bpf_calc_l3_l4_hash(__u32 key_idx, int map_fd);
 
