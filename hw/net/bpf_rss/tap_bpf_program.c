@@ -139,12 +139,11 @@ rss_l3_l4(struct __sk_buff *skb)
 	__u32 len;
 	__u32 queue = 0;
 
-	rss_conf = bpf_map_lookup_elem(&map_rss, 0);
+	rss_conf = (struct virtio_net_hdr_rss *) bpf_map_lookup_elem(&map_rss, 0);
 	if (!rss_conf) {
 		printt("hash(): rss key is not configured\n");
 		return -2;
 	}
-	key = (__u8 *)rss_conf->rss_hash_key;
 	key = (__u8 *)rss_conf->rss_hash_key;
 
 	/* Get correct proto for 802.1ad */
