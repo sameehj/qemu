@@ -56,9 +56,12 @@ struct virtio_net_hdr_rss {
 struct bpf_elf_map __attribute__((section("maps"), used))
 map_rss = {
 	.type           =       BPF_MAP_TYPE_ARRAY,
+	.id             =       BPF_MAP_ID_KEY,
 	.size_key       =       sizeof(__u32),
 	.size_value     =       sizeof(struct virtio_net_hdr_rss),
 	.max_elem       =       1,
+	.pinning        =       PIN_GLOBAL_NS,
+
 };
 
 /*
