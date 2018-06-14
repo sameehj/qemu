@@ -141,6 +141,7 @@ rss_l3_l4(struct __sk_buff *skb)
 	__u8 *key = 0;
 	__u32 len = 0;
 	__u32 queue = 0;
+	__u32 q = 0;
 
 	rss_conf = (struct virtio_net_hdr_rss *) map_lookup_elem(&map_rss, &key_idx);
 	if (!rss_conf) {
@@ -216,10 +217,10 @@ rss_l3_l4(struct __sk_buff *skb)
 
 	queue = rsskey->queues[(hash % rsskey->nb_queues) &
 				       (TAP_MAX_QUEUES - 1)];
-//	skb->cb[1] = QUEUE_OFFSET + queue;
-//	printt(">>>>> rss_l3_l4 hash=0x%x queue=%u\n", hash, queue);
+	q = queue;
+	printt(">>>>> rss_l3_l4 hash=0x%x queue=%u\n", hash, queue);
 
-	return queue;
+	return q;
 }
 
 #define RSS(L)                                          \
