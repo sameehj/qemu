@@ -133,13 +133,13 @@ rss_l3_l4(struct __sk_buff *skb)
 	void *data = (void *)(long)skb->data;
 	__u16 proto = (__u16)skb->protocol;
 	__u32 key_idx = 0xdeadbeef;
-	__u32 hash;
+	__u32 hash = 0;
 	struct virtio_net_hdr_rss * rss_conf;
 	struct rss_key *rsskey;
 	__u64 off = ETH_HLEN;
-	int j;
+	int j = 0;
 	__u8 *key = 0;
-	__u32 len;
+	__u32 len = 0;
 	__u32 queue = 0;
 
 	rss_conf = (struct virtio_net_hdr_rss *) map_lookup_elem(&map_rss, &key_idx);
@@ -217,7 +217,7 @@ rss_l3_l4(struct __sk_buff *skb)
 	queue = rsskey->queues[(hash % rsskey->nb_queues) &
 				       (TAP_MAX_QUEUES - 1)];
 //	skb->cb[1] = QUEUE_OFFSET + queue;
-	printt(">>>>> rss_l3_l4 hash=0x%x queue=%u\n", hash, queue);
+//	printt(">>>>> rss_l3_l4 hash=0x%x queue=%u\n", hash, queue);
 
 	return queue;
 }
