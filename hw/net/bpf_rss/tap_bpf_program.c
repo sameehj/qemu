@@ -41,8 +41,8 @@
 #define BPF_MAP_ID_KEY	1
 
 struct vlan_hdr {
-	__be16 proto;
-	__be16 tci;
+	__be16 h_vlan_TCI;
+	__be16 h_vlan_encapsulated_proto;
 };
 
 struct virtio_net_hdr_rss {
@@ -129,14 +129,14 @@ rte_softrss_be(const __u32 *input_tuple, const uint8_t *rss_key,
 static int __attribute__((always_inline))
 rss_l3_l4(struct __sk_buff *skb)
 {
-	void *data_end = (void *)(long)skb->data_end;
-	void *data = (void *)(long)skb->data;
-	__u16 proto = (__u16)skb->protocol;
+//	void *data_end = (void *)(long)skb->data_end;
+//	void *data = (void *)(long)skb->data;
+	__u64 proto = load_half(skb, 12);
+	__u64 nhoff = ETH_HLEN;
 	__u32 key_idx = 0xdeadbeef;
 	__u32 hash = 0;
 	struct virtio_net_hdr_rss * rss_conf;
 	struct rss_key *rsskey;
-	__u64 off = ETH_HLEN;
 	int j = 0;
 	__u8 *key = 0;
 	__u32 len = 0;
@@ -150,62 +150,55 @@ rss_l3_l4(struct __sk_buff *skb)
 	}
 	key = (__u8 *)rss_conf->rss_hash_key;
 
-	/* Get correct proto for 802.1ad */
-	if (skb->vlan_present && skb->vlan_proto == htons(ETH_P_8021AD)) {
-		if (data + ETH_ALEN * 2 + sizeof(struct vlan_hdr) +
-		    sizeof(proto) > data_end)
-			return -2;
-		proto = *(__u16 *)(data + ETH_ALEN * 2 +
-				   sizeof(struct vlan_hdr));
-		off += sizeof(struct vlan_hdr);
+	if (proto == ETH_P_8021AD) {
+		proto = load_half(skb, nhoff + offsetof(struct vlan_hdr,
+							h_vlan_encapsulated_proto));
+		nhoff += sizeof(struct vlan_hdr);
 	}
 
-	if (proto == htons(ETH_P_IP)) {
-		if (data + off + sizeof(struct iphdr) + sizeof(__u32)
-			> data_end)
-			return -2;
+	if (proto == ETH_P_8021Q) {
+		proto = load_half(skb, nhoff + offsetof(struct vlan_hdr,
+							h_vlan_encapsulated_proto));
+		nhoff += sizeof(struct vlan_hdr);
+	}
 
-		__u8 *src_dst_addr = data + off + offsetof(struct iphdr, saddr);
-		__u8 *src_dst_port = data + off + sizeof(struct iphdr);
+	if (likely(proto == ETH_P_IP)) {
+		//__u8 *src_dst_addr =  load_byte(skb, nhoff + offsetof(struct iphdr, saddr));
+		//__u8 *src_dst_port =  load_byte(skb, nhoff + sizeof(struct iphdr));
 		struct ipv4_l3_l4_tuple v4_tuple = {
-			.src_addr = IPv4(*(src_dst_addr + 0),
-					*(src_dst_addr + 1),
-					*(src_dst_addr + 2),
-					*(src_dst_addr + 3)),
-			.dst_addr = IPv4(*(src_dst_addr + 4),
-					*(src_dst_addr + 5),
-					*(src_dst_addr + 6),
-					*(src_dst_addr + 7)),
-			.sport = PORT(*(src_dst_port + 0),
-					*(src_dst_port + 1)),
-			.dport = PORT(*(src_dst_port + 2),
-					*(src_dst_port + 3)),
+			.src_addr = IPv4(load_byte(skb, nhoff + offsetof(struct iphdr, saddr)),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, saddr) + 1),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, saddr) + 2),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, saddr) + 3)),
+			.dst_addr = IPv4(load_byte(skb, nhoff + offsetof(struct iphdr, daddr)),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, daddr) + 1),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, daddr) + 2),
+					 load_byte(skb, nhoff + offsetof(struct iphdr, daddr) + 3)),
+			.sport = PORT(load_byte(skb, nhoff + sizeof(struct iphdr)),
+				      load_byte(skb, nhoff + sizeof(struct iphdr) + 1)),
+			.dport = PORT(load_byte(skb, nhoff + sizeof(struct iphdr) + 2),
+				      load_byte(skb, nhoff + sizeof(struct iphdr) + 3))
 		};
 		__u8 input_len = sizeof(v4_tuple) / sizeof(__u32);
 		if (rss_conf->hash_function_flags & (1 << HASH_FIELD_IPV4_L3))
 			input_len--;
 		hash = rte_softrss_be((__u32 *)&v4_tuple, key, 3);
 	} else if (proto == htons(ETH_P_IPV6)) {
-		if (data + off + sizeof(struct ipv6hdr) +
-					sizeof(__u32) > data_end)
-			return -2;
-		__u8 *src_dst_addr = data + off +
-					offsetof(struct ipv6hdr, saddr);
-		__u8 *src_dst_port = data + off +
-					sizeof(struct ipv6hdr);
+	//	__u8 *src_dst_addr = data + off +
+	//				offsetof(struct ipv6hdr, saddr);
+	//	__u8 *src_dst_port = data + off +
+		//			sizeof(struct ipv6hdr);
 		struct ipv6_l3_l4_tuple v6_tuple;
 		for (j = 0; j < 4; j++)
 			*((uint32_t *)&v6_tuple.src_addr + j) =
-				__builtin_bswap32(*((uint32_t *)
-						src_dst_addr + j));
+				load_word(skb, nhoff + offsetof(struct ipv6hdr, saddr) + j);
 		for (j = 0; j < 4; j++)
 			*((uint32_t *)&v6_tuple.dst_addr + j) =
-				__builtin_bswap32(*((uint32_t *)
-						src_dst_addr + 4 + j));
-		v6_tuple.sport = PORT(*(src_dst_port + 0),
-			      *(src_dst_port + 1));
-		v6_tuple.dport = PORT(*(src_dst_port + 2),
-			      *(src_dst_port + 3));
+				load_word(skb, nhoff + offsetof(struct ipv6hdr, daddr) + j);
+		v6_tuple.sport = PORT(load_byte(skb, nhoff + sizeof(struct ipv6hdr)),
+				      load_byte(skb, nhoff + sizeof(struct ipv6hdr) + 1));
+		v6_tuple.dport = PORT(load_byte(skb, nhoff + sizeof(struct ipv6hdr) + 2),
+				      load_byte(skb, nhoff + sizeof(struct ipv6hdr) + 3));
 
 		__u8 input_len = sizeof(v6_tuple) / sizeof(__u32);
 		if (rss_conf->hash_function_flags & (1 << HASH_FIELD_IPV6_L3))
