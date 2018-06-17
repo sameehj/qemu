@@ -936,7 +936,7 @@ void tap_set_rss(int fd, struct virtio_net_hdr_rss *rss)
 void tap_set_bpf(int fd, int bpf_fd)
 {
     printf("tap fd: %d\n", fd);
-    tap_fd_rss(fd, bpf_fd);
+    tap_fd_bpf(fd, bpf_fd);
 }
 
 VHostNetState *tap_get_vhost_net(NetClientState *nc)
