@@ -111,7 +111,8 @@ static int bpf_load(enum bpf_prog_type type,
 
 int tap_flow_bpf_load_rss_program(int map_fd)
 {
-	l3_l4_hash_insns[9].imm = map_fd;
+	l3_l4_hash_insns[3].imm = 0;
+	l3_l4_hash_insns[8].imm = map_fd;
 
 	return bpf_load(BPF_PROG_TYPE_SOCKET_FILTER,
 		(struct bpf_insn *)l3_l4_hash_insns,
