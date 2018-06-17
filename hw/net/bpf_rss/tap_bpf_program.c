@@ -210,10 +210,8 @@ rss_l3_l4(struct __sk_buff *skb)
 
 	queue = rsskey->queues[(hash % rsskey->nb_queues) &
 				       (TAP_MAX_QUEUES - 1)];
-	q = queue;
-	printt(">>>>> rss_l3_l4 hash=0x%x queue=%u\n", hash, queue);
-
-	return q;
+	printt("queue: 0x%x hash: 0x%x\n" ,queue, hash);
+	return queue;
 }
 
 #define RSS(L)                                          \
