@@ -1003,6 +1003,7 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	printf("yessssss rss.rss_hash_key:\n" );
 	print_zbar(rss.rss_hash_key, 40);
 	printf("yesssss rss_table length = %u \n", rss.rss_indirection_table_length);
+	rss.rss_indirection_table_length = 128;
 	print_zbar(rss.rss_indirection_table, rss.rss_indirection_table_length);
 	printf("yessssss  s (size) = 0x%lx \n", s);
 	printf("yessssss wohoooooooooooo!!!\n");
@@ -1012,12 +1013,17 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 			    sizeof(struct virtio_net_hdr_rss),
 			    1);
         if (map_fd < 0) {
-             printf("Couldn't init rss map, Why!");
+             printf("Couldn't init rss map, Why!\n");
 	}
 
          tap_flow_bpf_update_rss_elem(map_fd, 0, &rss);
 
 	 int bpf_fd = tap_flow_bpf_load_rss_program(map_fd);
+        if (bpf_fd < 0) {
+             printf("Couldn't init rss map, Why!\n");
+	}
+             printf("map fd = %d , bpf fd = %d",map_fd, bpf_fd);
+
 	/*for(int j=0; j < 40;j++)
 	{
 		rss_key[j] = (uint8_t) rss.rss_hash_key[j];
