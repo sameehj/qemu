@@ -1008,7 +1008,6 @@ static int virtio_net_rss(VirtIONet *n, uint8_t cmd,
 	printf("yessssss  s (size) = 0x%lx \n", s);
 	printf("yessssss wohoooooooooooo!!!\n");
 
-
 	int map_fd = tap_flow_bpf_rss_map_create(sizeof(__u32),
 			    sizeof(struct virtio_net_hdr_rss),
 			    1);

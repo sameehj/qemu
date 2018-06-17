@@ -338,7 +338,7 @@ void tap_fd_bpf(int fd, int bpf_fd)
 
     printf("tap fd: %d", fd);
 
-    if (ioctl(fd, TUNSETSTEERINGEBPF, bpf_fd) != 0) {
+    if (ioctl(fd, TUNSETSTEERINGEBPF, &bpf_fd) != 0) {
         error_report("TUNSETSTEERINGEBPF ioctl() failed: %s",
                      strerror(errno));
     }

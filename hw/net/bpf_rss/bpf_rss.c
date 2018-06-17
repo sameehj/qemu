@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/syscall.h>   /* For SYS_xxx definitions */
@@ -95,18 +96,29 @@ static int bpf_load(enum bpf_prog_type type,
 		  size_t insns_cnt,
 		  const char *license)
 {
+#define BUFF_LEN 1000000
+	int ret = 0;
 	union bpf_attr attr = {};
+	 FILE * pFile;
+
+	char buffer[BUFF_LEN]; 
 
 	bzero(&attr, sizeof(attr));
 	attr.prog_type = type;
 	attr.insn_cnt = (__u32)insns_cnt;
 	attr.insns = ptr_to_u64(insns);
 	attr.license = ptr_to_u64(license);
-	attr.log_buf = ptr_to_u64(NULL);
-	attr.log_level = 0;
+	attr.log_buf = ptr_to_u64(buffer);
+	attr.log_level = 1;
+	attr.log_size = BUFF_LEN;
 	attr.kern_version = 0;
 
-	return sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+	ret = sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+	pFile = fopen ("bpf.out", "wb");
+	fwrite(buffer, BUFF_LEN, 1, pFile);
+	fclose(pFile);
+
+	return ret;
 }
 
 int tap_flow_bpf_load_rss_program(int map_fd)
