@@ -2126,6 +2126,11 @@ F: hw/rdma/*
 F: hw/rdma/vmw/*
 F: docs/pvrdma.txt
 
+BPF
+M: Sameeh Jubran <sameeh@daynix.com>
+S: Maintained
+F: linux-headers/linux/bpf.h
+
 Build and test automation
 -------------------------
 Build and test automation
