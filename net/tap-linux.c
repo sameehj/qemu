@@ -314,3 +314,29 @@ int tap_fd_get_ifname(int fd, char *ifname)
     pstrcpy(ifname, sizeof(ifr.ifr_name), ifr.ifr_name);
     return 0;
 }
+
+
+int tap_fd_load_bpf(int fd, int bpf_fd, BPFType type)
+{
+    int ioctl_num = 0;
+    switch (type)
+    {
+        case BPF_TYPE_FILTER:
+        ioctl_num = TUNSETFILTEREBPF;
+        break;
+
+        case BPF_TYPE_STEERING:
+        ioctl_num = TUNSETSTEERINGEBPF;
+        break;
+
+        default:
+        error_report("Unknown bpf_type");
+        return -1;
+    }
+
+    if (ioctl(fd, ioctl_num, &bpf_fd) != 0) {
+        error_report("#%d ioctl() failed: %s", ioctl_num, strerror(errno));
+        return -1;
+    }
+    return 0;
+}

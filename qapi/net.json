@@ -692,3 +692,14 @@
 ##
 { 'event': 'NIC_RX_FILTER_CHANGED',
   'data': { '*name': 'str', 'path': 'str' } }
+
+##
+# @BPFType:
+#
+# BPF programs types provided as an argument for tap bpf ioctls
+#
+# Since: 2.12
+#
+##
+{ 'enum': 'BPFType',
+  'data': [ 'filter', 'steering' ] }
