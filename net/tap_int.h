@@ -45,5 +45,6 @@ int tap_fd_set_vnet_be(int fd, int vnet_is_be);
 int tap_fd_enable(int fd);
 int tap_fd_disable(int fd);
 int tap_fd_get_ifname(int fd, char *ifname);
+int tap_fd_load_bpf(int fd, int bpf_fd, BPFType type);
 
 #endif /* NET_TAP_INT_H */

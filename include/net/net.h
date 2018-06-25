@@ -39,7 +39,6 @@ typedef struct NICConf {
     DEFINE_PROP_MACADDR("mac",   _state, _conf.macaddr),                \
     DEFINE_PROP_NETDEV("netdev", _state, _conf.peers)
 
-
 /* Net clients */
 
 typedef void (NetPoll)(NetClientState *, bool enable);
@@ -60,6 +59,7 @@ typedef int (SetVnetLE)(NetClientState *, bool);
 typedef int (SetVnetBE)(NetClientState *, bool);
 typedef struct SocketReadState SocketReadState;
 typedef void (SocketReadStateFinalize)(SocketReadState *rs);
+typedef int (SetBPFFilter)(NetClientState *, int, BPFType);
 
 typedef struct NetClientInfo {
     NetClientDriver type;
@@ -80,6 +80,7 @@ typedef struct NetClientInfo {
     SetVnetHdrLen *set_vnet_hdr_len;
     SetVnetLE *set_vnet_le;
     SetVnetBE *set_vnet_be;
+    SetBPFFilter *set_bpf_filter;
 } NetClientInfo;
 
 struct NetClientState {
