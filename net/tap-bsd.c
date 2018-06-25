@@ -259,3 +259,8 @@ int tap_fd_get_ifname(int fd, char *ifname)
 {
     return -1;
 }
+
+int tap_fd_load_bpf(int fd, int bpf_fd, enum bpf_type type)
+{
+    return -1;
+}

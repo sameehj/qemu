@@ -342,6 +342,13 @@ int tap_get_fd(NetClientState *nc)
     return s->fd;
 }
 
+static int tap_set_bpf_filter(NetClientState *nc, int bpf_fd, bpf_type type)
+{
+    TAPState *s = DO_UPCAST(TAPState, nc, nc);
+    assert(nc->info->type == NET_CLIENT_DRIVER_TAP);
+    return tap_fd_load_bpf(s->fd, bpf_fd, type);
+}
+
 /* fd support */
 
 static NetClientInfo net_tap_info = {
@@ -360,6 +367,7 @@ static NetClientInfo net_tap_info = {
     .set_vnet_hdr_len = tap_set_vnet_hdr_len,
     .set_vnet_le = tap_set_vnet_le,
     .set_vnet_be = tap_set_vnet_be,
+    .set_bpf_filter = tap_set_bpf_filter,
 };
 
 static TAPState *net_tap_fd_init(NetClientState *peer,
