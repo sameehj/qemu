@@ -102,6 +102,9 @@ typedef struct VirtIONet {
     int announce_counter;
     bool needs_vnet_hdr_swap;
     bool mtu_bypass_backend;
+    struct virtio_net_steering_modes supported_modes;
+    struct virtio_net_steering_modes current_mode;
+    struct virtio_net_rss_conf *rss_conf;
 } VirtIONet;
 
 void virtio_net_set_netclient_name(VirtIONet *n, const char *name,

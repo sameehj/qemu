@@ -973,13 +973,54 @@ static int virtio_net_handle_mq(VirtIONet *n, uint8_t cmd,
     return VIRTIO_NET_OK;
 }
 
+static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
+                                struct iovec *iov, unsigned int iov_cnt,
+                                struct iovec *iov_in, unsigned int iov_cnt_in,
+				size_t *size_in)
+{
+    size_t s;
+    struct virtio_net_steering_mode sm;
+
+    switch (cmd)
+    {
+	case VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES:
+                if (!size_in) {
+                    return VIRTIO_NET_ERR;
+                }
+                s = iov_from_buf(iov_in, iov_cnt_in, 0,
+				&n->supported_modes,
+				sizeof(n->supported_modes));
+                if (s != sizeof(n->supported_modes) ||
+				!size_in) {
+                    return VIRTIO_NET_ERR;
+                }
+                *size_in = s;
+		break;
+	case VIRTIO_NET_CTRL_SM_CONTROL:
+                s = iov_to_buf(iov, iov_cnt, 0, &sm, sizeof(sm) - sizeof(union command_data));
+                if (s != sizeof(sm) - sizeof(union command_data)) {
+                    return VIRTIO_NET_ERR;
+                }
+             /* switch (cmd)
+                {
+                   dafault:
+                   return VIRTIO_NET_ERR;
+		} */
+		break;
+	default:
+                return VIRTIO_NET_ERR;
+    }
+
+    return VIRTIO_NET_OK;
+}
+
 static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
 {
     VirtIONet *n = VIRTIO_NET(vdev);
     struct virtio_net_ctrl_hdr ctrl;
     virtio_net_ctrl_ack status = VIRTIO_NET_ERR;
     VirtQueueElement *elem;
-    size_t s;
+    size_t s, elem_in_size = 0;
     struct iovec *iov, *iov2;
     unsigned int iov_cnt;
 
@@ -1014,12 +1055,20 @@ static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
             status = virtio_net_handle_mq(n, ctrl.cmd, iov, iov_cnt);
         } else if (ctrl.class == VIRTIO_NET_CTRL_GUEST_OFFLOADS) {
             status = virtio_net_handle_offloads(n, ctrl.cmd, iov, iov_cnt);
+        } else if (ctrl.class == VIRTIO_NET_CTRL_STEERING_MODE) {
+	    size_t size_in = 0;
+            status = virtio_net_ctrl_steering_mode(n, ctrl.cmd, iov, iov_cnt,
+                   elem->in_sg, elem->in_num, &size_in);
+            if (status == VIRTIO_NET_OK  && size_in > 0)
+	    {
+                elem_in_size += size_in;
+	    }
         }
 
-        s = iov_from_buf(elem->in_sg, elem->in_num, 0, &status, sizeof(status));
+        s = iov_from_buf(elem->in_sg, elem->in_num, elem_in_size, &status, sizeof(status));
         assert(s == sizeof(status));
-
-        virtqueue_push(vq, elem, sizeof(status));
+        elem_in_size += s;
+        virtqueue_push(vq, elem, elem_in_size);
         virtio_notify(vdev, vq);
         g_free(iov2);
         g_free(elem);
@@ -1960,6 +2009,8 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
     if (n->net_conf.mtu) {
         n->host_features |= (1ULL << VIRTIO_NET_F_MTU);
     }
+
+        n->host_features |= (1ULL << VIRTIO_NET_F_CTRL_STEERING_MODE);
 
     if (n->net_conf.duplex_str) {
         if (strncmp(n->net_conf.duplex_str, "half", 5) == 0) {
