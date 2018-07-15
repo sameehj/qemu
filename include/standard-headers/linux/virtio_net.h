@@ -274,16 +274,17 @@ struct virtio_net_rss_supported_hash{
 uint32_t hash_function;
 };
 
+struct virtio_net_rss_conf_ptrs {
+    uint8_t *hash_key;
+    uint32_t  *indirection_table;
+};
+
 struct virtio_net_rss_conf {
     uint32_t hash_function;
     uint32_t hash_function_flags;
     uint32_t hash_key_length;
     uint32_t indirection_table_length;
-};
-
-struct virtio_net_rss_conf_ptrs {
-    uint32_t *hash_key;
-    uint8_t  *indirection_table;
+    struct virtio_net_rss_conf_ptrs ptrs;
 };
 
 #define VIRTIO_NET_SM_CTRL_RSS_GET_SUPPORTED_FUNCTIONS   0
@@ -301,7 +302,6 @@ union command_data {
 struct virtio_net_steering_mode {
     uint32_t steering_mode;
     uint32_t command;
-    union command_data data;
 };
 
 #define VIRTIO_NET_F_CTRL_STEERING_MODE  60
@@ -309,5 +309,8 @@ struct virtio_net_steering_mode {
 #define VIRTIO_NET_CTRL_STEERING_MODE             7
 #define VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES    0
 #define VIRTIO_NET_CTRL_SM_CONTROL                1
+
+#define STEERING_MODE_AUTO          0x1
+#define STEERING_MODE_RSS           0x2
 
 #endif /* _LINUX_VIRTIO_NET_H */

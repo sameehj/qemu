@@ -28,6 +28,9 @@
 #include "migration/misc.h"
 #include "standard-headers/linux/ethtool.h"
 #include "standard-headers/linux/libbpf.h"
+#include <sys/syscall.h>
+#include <linux/bpf.h>
+#include "rss_bpf_insns.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -973,21 +976,193 @@ static int virtio_net_handle_mq(VirtIONet *n, uint8_t cmd,
     return VIRTIO_NET_OK;
 }
 
-static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
+static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
+                        unsigned int size)
+{
+        return syscall(__NR_bpf, cmd, attr, size);
+}
+
+static int rss_load_bpf_program(int map_fd)
+{
+    int ret = 0;
+    union bpf_attr attr = {};
+
+    /* Insert map fd to the bpf filter program */
+    l3_l4_hash_insns[3].imm = 0;
+    l3_l4_hash_insns[8].imm = map_fd;
+
+    bzero(&attr, sizeof(attr));
+    attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+    attr.insn_cnt = ARRAY_SIZE(l3_l4_hash_insns);
+    attr.insns = (__u64) (unsigned long) (l3_l4_hash_insns);
+    attr.license = (__u64) (unsigned long) ("Dual BSD/GPL");
+
+    ret = sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+
+    return ret;
+}
+
+static int rss_create_map(VirtIONet *n)
+{
+    union bpf_attr attr = {};
+
+    bzero(&attr, sizeof(attr));
+    attr.map_type    = BPF_MAP_TYPE_ARRAY;
+    attr.key_size    = sizeof(__u32);
+    attr.value_size  = sizeof(*n->rss_conf);
+    attr.max_entries = 1;
+
+    return sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+}
+
+static int rss_update_map(int fd, void *key, void *value)
+{
+    union bpf_attr attr = {};
+
+    bzero(&attr, sizeof(attr));
+
+    attr.map_type = BPF_MAP_TYPE_HASH;
+    attr.map_fd = fd;
+    attr.key = (__u64) (unsigned long) (key);
+    attr.value = (__u64) (unsigned long) (value);
+    attr.flags = BPF_ANY;
+
+    return sys_bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr));
+}
+
+static int virtio_net_rss_assign_bpf_filter(VirtIONet *n)
+{
+    NetClientState *nc;
+    int fd = 0;
+	int map_fd = rss_create_map(n);
+    int i = 0;
+    if (map_fd < 0) {
+        printf("Couldn't init rss map, Why!\n");
+	}
+
+    rss_update_map(map_fd, 0, &n->rss_conf);
+
+    int bpf_fd = rss_load_bpf_program(map_fd);
+	for( i = 0; i < n->curr_queues ; i++)
+	{
+    	nc = qemu_get_subqueue(n->nic, i);
+
+        if (!nc->peer) {
+            printf("We are doomed\n");
+            return VIRTIO_NET_ERR;
+        }
+
+        if (nc->peer->info->type != NET_CLIENT_DRIVER_TAP) {
+            return VIRTIO_NET_ERR;
+        }
+            fd = vhost_net_get_fd(nc->peer);
+	        printf("subqueue = %d, fd = %d\n",i,fd);
+            tap_set_bpf_filter(fd, bpf_fd);
+       	}
+    }
+
+}
+
+static int virtio_net_ctrl_sm_rss(VirtIONet *n, uint32_t cmd,
                                 struct iovec *iov, unsigned int iov_cnt,
                                 struct iovec *iov_in, unsigned int iov_cnt_in,
-				size_t *size_in)
+                                size_t *size_in)
+{
+    size_t s;
+    uint32_t supported_hash_function = 0;
+
+    switch (cmd)
+    {
+    case VIRTIO_NET_SM_CTRL_RSS_GET_SUPPORTED_FUNCTIONS:
+          supported_hash_function |= RSS_HASH_FUNCTION_TOEPLITZ;
+
+          if (!size_in) {
+              return VIRTIO_NET_ERR;
+          }
+          s = iov_from_buf(iov_in, iov_cnt_in, 0,
+       	&supported_hash_function,
+       	supported_hash_function);
+          if (s != sizeof(n->supported_modes) ||
+       	!size_in) {
+               return VIRTIO_NET_ERR;
+          }
+          *size_in = s;
+
+          break;
+    case VIRTIO_NET_SM_CTRL_RSS_SET:
+          if (!n->rss_conf)
+          {
+              n->rss_conf = g_malloc0(sizeof(struct virtio_net_rss_conf));
+          }
+          else if (iov == NULL || iov_cnt == 0)
+          {
+              g_free(n->rss_conf->ptrs.hash_key);
+              g_free(n->rss_conf->ptrs.indirection_table);
+              g_free(n->rss_conf);
+              return VIRTIO_NET_OK;
+          }
+          s = iov_to_buf(iov, iov_cnt, 0, n->rss_conf,
+                  sizeof(struct virtio_net_rss_conf) -
+                  sizeof(struct virtio_net_rss_conf_ptrs));
+
+          if (s != sizeof(struct virtio_net_rss_conf) -
+                  sizeof(struct virtio_net_rss_conf_ptrs))
+          {
+              return VIRTIO_NET_ERR;
+          }
+          n->rss_conf->ptrs.hash_key = g_malloc0(sizeof(uint8_t) *
+                  n->rss_conf->hash_key_length);
+
+          s = iov_to_buf(iov, iov_cnt, 0, n->rss_conf->ptrs.hash_key,
+                  sizeof(uint8_t) * n->rss_conf->hash_key_length);
+          if (s != sizeof(uint8_t) * n->rss_conf->hash_key_length)
+          {
+              g_free(n->rss_conf->ptrs.hash_key);
+              return VIRTIO_NET_ERR;
+          }
+
+          n->rss_conf->ptrs.indirection_table
+              = g_malloc0(sizeof(uint32_t) *
+                      n->rss_conf->indirection_table_length);
+          s = iov_to_buf(iov, iov_cnt, 0,
+                  n->rss_conf->ptrs.indirection_table, sizeof(uint32_t) *
+                  n->rss_conf->indirection_table_length);
+
+          if (s != sizeof(uint32_t) * n->rss_conf->indirection_table_length)
+          {
+              g_free(n->rss_conf->ptrs.hash_key);
+              g_free(n->rss_conf->ptrs.indirection_table);
+              return VIRTIO_NET_ERR;
+          }
+          // do bpf magic
+          virtio_net_rss_assign_bpf_filter(n);
+          break;
+	default:
+            return VIRTIO_NET_ERR;
+    }
+
+    return VIRTIO_NET_OK;
+}
+static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
+                                struct iovec *iov, unsigned int iov_cnt,
+                                struct iovec *iov_in, unsigned int iov_in_cnt,
+                                size_t *size_in)
 {
     size_t s;
     struct virtio_net_steering_mode sm;
+    int status = 0;
+    size_t size_in_cmd = 0;
 
     switch (cmd)
     {
 	case VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES:
+        printf("%s, SM_supported_modes\n", __func__);
                 if (!size_in) {
                     return VIRTIO_NET_ERR;
                 }
-                s = iov_from_buf(iov_in, iov_cnt_in, 0,
+                n->supported_modes.steering_modes |= STEERING_MODE_RSS |
+                    STEERING_MODE_AUTO;
+                s = iov_from_buf(iov_in, iov_in_cnt, 0,
 				&n->supported_modes,
 				sizeof(n->supported_modes));
                 if (s != sizeof(n->supported_modes) ||
@@ -997,15 +1172,30 @@ static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
                 *size_in = s;
 		break;
 	case VIRTIO_NET_CTRL_SM_CONTROL:
-                s = iov_to_buf(iov, iov_cnt, 0, &sm, sizeof(sm) - sizeof(union command_data));
-                if (s != sizeof(sm) - sizeof(union command_data)) {
+        printf("%s, SM_CONTROL\n", __func__);
+                s = iov_to_buf(iov, iov_cnt, 0, &sm, sizeof(sm));
+                if (s != sizeof(sm))
+                {
                     return VIRTIO_NET_ERR;
                 }
-             /* switch (cmd)
-                {
-                   dafault:
-                   return VIRTIO_NET_ERR;
-		} */
+                iov_discard_front(&iov, &iov_cnt, sizeof(sm));
+                // TODO handle the case where we change mode, call the old mode
+                // function with null ptrs  should do the trick of freeing any resources
+                switch (sm.steering_mode)
+                  {
+                      case STEERING_MODE_AUTO:
+                          break;
+                      case STEERING_MODE_RSS:
+                          printf("%s, STEERING_MODE_RSS\n", __func__);
+                          status = virtio_net_ctrl_sm_rss(n, sm.command,
+                                  iov, iov_cnt, iov_in, iov_in_cnt, size_in);
+                          if (status == VIRTIO_NET_OK  && size_in > 0) {
+                              size_in += size_in_cmd;
+	                      }
+                          break;
+                      default:
+                      return VIRTIO_NET_ERR;
+	              }
 		break;
 	default:
                 return VIRTIO_NET_ERR;
@@ -1059,10 +1249,9 @@ static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
 	    size_t size_in = 0;
             status = virtio_net_ctrl_steering_mode(n, ctrl.cmd, iov, iov_cnt,
                    elem->in_sg, elem->in_num, &size_in);
-            if (status == VIRTIO_NET_OK  && size_in > 0)
-	    {
+            if (status == VIRTIO_NET_OK  && size_in > 0) {
                 elem_in_size += size_in;
-	    }
+	        }
         }
 
         s = iov_from_buf(elem->in_sg, elem->in_num, elem_in_size, &status, sizeof(status));
@@ -1380,8 +1569,6 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
     int32_t num_packets = 0;
     int queue_index = vq2q(virtio_get_queue_index(q->tx_vq));
 
-    struct bpf_object *obj = NULL;
-    bpf_object__load(obj);
     if (!(vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)) {
         return num_packets;
     }
