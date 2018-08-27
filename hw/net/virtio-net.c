@@ -972,41 +972,129 @@ static int virtio_net_handle_mq(VirtIONet *n, uint8_t cmd,
     return VIRTIO_NET_OK;
 }
 
-static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
+
+static int virtio_net_ctrl_sm_rss(VirtIONet *n, uint32_t cmd,
                                 struct iovec *iov, unsigned int iov_cnt,
                                 struct iovec *iov_in, unsigned int iov_cnt_in,
-        size_t *size_in)
+                                size_t *size_in)
+{
+    size_t s;
+    uint32_t supported_hash_function = 0;
+
+    switch (cmd) {
+    case VIRTIO_NET_SM_CTRL_RSS_GET_SUPPORTED_FUNCTIONS:
+        supported_hash_function |= RSS_HASH_FUNCTION_TOEPLITZ;
+        if (!size_in) {
+            return VIRTIO_NET_ERR;
+        }
+        s = iov_from_buf(iov_in, iov_cnt_in, 0,
+        &supported_hash_function,
+        supported_hash_function);
+        if (s != sizeof(n->supported_modes) ||
+        !size_in) {
+            return VIRTIO_NET_ERR;
+        }
+        *size_in = s;
+        break;
+    case VIRTIO_NET_SM_CTRL_RSS_SET:
+        if (!n->rss_conf) {
+            n->rss_conf = g_malloc0(
+                    sizeof(struct virtio_net_rss_conf));
+        } else if (iov == NULL || iov_cnt == 0) {
+            g_free(n->rss_conf->ptrs.hash_key);
+            g_free(n->rss_conf->ptrs.indirection_table);
+            g_free(n->rss_conf);
+            return VIRTIO_NET_OK;
+        }
+        s = iov_to_buf(iov, iov_cnt, 0, n->rss_conf,
+                sizeof(struct virtio_net_rss_conf) -
+                sizeof(struct virtio_net_rss_conf_ptrs));
+
+        if (s != sizeof(struct virtio_net_rss_conf) -
+                sizeof(struct virtio_net_rss_conf_ptrs)) {
+            return VIRTIO_NET_ERR;
+        }
+        n->rss_conf->ptrs.hash_key = g_malloc0(sizeof(uint8_t) *
+                n->rss_conf->hash_key_length);
+        s = iov_to_buf(iov, iov_cnt, 0, n->rss_conf->ptrs.hash_key,
+                sizeof(uint8_t) * n->rss_conf->hash_key_length);
+        if (s != sizeof(uint8_t) * n->rss_conf->hash_key_length) {
+            g_free(n->rss_conf->ptrs.hash_key);
+            return VIRTIO_NET_ERR;
+        }
+        n->rss_conf->ptrs.indirection_table
+            = g_malloc0(sizeof(uint32_t) *
+                    n->rss_conf->indirection_table_length);
+        s = iov_to_buf(iov, iov_cnt, 0,
+                n->rss_conf->ptrs.indirection_table, sizeof(uint32_t) *
+                n->rss_conf->indirection_table_length);
+        if (s != sizeof(uint32_t) *
+                n->rss_conf->indirection_table_length) {
+            g_free(n->rss_conf->ptrs.hash_key);
+            g_free(n->rss_conf->ptrs.indirection_table);
+            return VIRTIO_NET_ERR;
+        }
+        /* do bpf magic */
+        break;
+    default:
+        return VIRTIO_NET_ERR;
+    }
+
+    return VIRTIO_NET_OK;
+}
+
+static int virtio_net_ctrl_steering_mode(VirtIONet *n, uint8_t cmd,
+                                struct iovec *iov, unsigned int iov_cnt,
+                                struct iovec *iov_in, unsigned int iov_in_cnt,
+                                size_t *size_in)
 {
     size_t s;
     struct virtio_net_steering_mode sm;
+    int status = 0;
+    size_t size_in_cmd = 0;
 
     switch (cmd) {
     case VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES:
         if (!size_in) {
             return VIRTIO_NET_ERR;
         }
-                  s = iov_from_buf(iov_in, iov_cnt_in, 0,
-          &n->supported_modes, sizeof(n->supported_modes));
+        n->supported_modes.steering_modes |= STEERING_MODE_RSS |
+            STEERING_MODE_AUTO;
+        s = iov_from_buf(iov_in, iov_in_cnt, 0,
+        &n->supported_modes,
+        sizeof(n->supported_modes));
         if (s != sizeof(n->supported_modes) ||
-          !size_in) {
+        !size_in) {
             return VIRTIO_NET_ERR;
         }
-                  *size_in = s;
-      break;
+        *size_in = s;
+         break;
     case VIRTIO_NET_CTRL_SM_CONTROL:
-        s = iov_to_buf(iov, iov_cnt, 0, &sm, sizeof(sm) -
-                sizeof(union command_data));
-        if (s != sizeof(sm) - sizeof(union command_data)) {
+        s = iov_to_buf(iov, iov_cnt, 0, &sm, sizeof(sm));
+        if (s != sizeof(sm)) {
             return VIRTIO_NET_ERR;
         }
-        /* switch (cmd)
-             {
-                dafault:
-                return VIRTIO_NET_ERR;
-         } */
-      break;
+        iov_discard_front(&iov, &iov_cnt, sizeof(sm));
+        /* TODO handle the case where we change mode, call the old */
+        /* mode function with null ptrs  should do the trick of */
+        /* freeing any resources */
+        switch (sm.steering_mode) {
+        case STEERING_MODE_AUTO:
+                    break;
+        case STEERING_MODE_RSS:
+            status = virtio_net_ctrl_sm_rss(n, sm.command,
+                   iov, iov_cnt, iov_in, iov_in_cnt,
+                   &size_in_cmd);
+            if (status == VIRTIO_NET_OK && size_in_cmd > 0) {
+                *size_in += size_in_cmd;
+            }
+            break;
+        default:
+            return VIRTIO_NET_ERR;
+        }
+        break;
     default:
-                return VIRTIO_NET_ERR;
+        return VIRTIO_NET_ERR;
     }
 
     return VIRTIO_NET_OK;
