@@ -27,6 +27,10 @@
 #include "hw/virtio/virtio-access.h"
 #include "migration/misc.h"
 #include "standard-headers/linux/ethtool.h"
+#include <sys/syscall.h>
+#include <linux/bpf.h>
+#include "rss_bpf_insns.h"
+#include "rss_tap_bpf.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -972,6 +976,99 @@ static int virtio_net_handle_mq(VirtIONet *n, uint8_t cmd,
     return VIRTIO_NET_OK;
 }
 
+static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
+                        unsigned int size)
+{
+        return syscall(__NR_bpf, cmd, attr, size);
+}
+
+static int rss_load_bpf_program(int map_fd)
+{
+    int ret = 0;
+    union bpf_attr attr = {};
+
+    /* Insert map fd to the bpf filter program */
+    l3_l4_hash_insns[3].imm = 0;
+    l3_l4_hash_insns[8].imm = map_fd;
+
+    memset(&attr, 0, sizeof(attr));
+    attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
+    attr.insn_cnt = ARRAY_SIZE(l3_l4_hash_insns);
+    attr.insns = (__u64) (unsigned long) (l3_l4_hash_insns);
+    attr.license = (__u64) (unsigned long) ("Dual BSD/GPL");
+
+    ret = sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+
+    return ret;
+}
+
+static int rss_create_map(VirtIONet *n, size_t size)
+{
+    union bpf_attr attr = {};
+
+    memset(&attr, 0, sizeof(attr));
+    attr.map_type    = BPF_MAP_TYPE_ARRAY;
+    attr.key_size    = sizeof(__u32);
+    attr.value_size  = size;
+    attr.max_entries = 1;
+
+    return sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+}
+
+static int rss_update_map(int fd, void *key, void *value)
+{
+    union bpf_attr attr = {};
+
+    memset(&attr, 0, sizeof(attr));
+
+    attr.map_type = BPF_MAP_TYPE_HASH;
+    attr.map_fd = fd;
+    attr.key = (__u64) (unsigned long) (key);
+    attr.value = (__u64) (unsigned long) (value);
+    attr.flags = BPF_ANY;
+
+    return sys_bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr));
+}
+
+static int virtio_net_rss_assign_bpf_filter(VirtIONet *n)
+{
+    NetClientState *nc;
+    struct rss_key rss_bpf_key_map;
+    int i = 0;
+    int map_fd = 0;
+    int ret = 0;
+
+    if (n->rss_conf) {
+        rss_bpf_key_map.hash_fields = n->rss_conf->hash_function_flags;
+        rss_bpf_key_map.nb_queues = n->curr_queues;
+        rss_bpf_key_map.indirection_table = n->rss_conf->ptrs.indirection_table;
+        rss_bpf_key_map.indirection_table_size = n->rss_conf->indirection_table_length;
+        rss_bpf_key_map.key = n->rss_conf->ptrs.hash_key;
+        rss_bpf_key_map.key_size = n->rss_conf->hash_key_length;
+        map_fd = rss_create_map(n, sizeof(rss_bpf_key_map));
+    }
+
+    if (map_fd <= 0) {
+        return -1;
+    }
+
+    rss_update_map(map_fd, 0, &rss_bpf_key_map);
+    int bpf_fd = rss_load_bpf_program(map_fd);
+    for (i = 0; i < n->curr_queues ; i++) {
+        nc = qemu_get_subqueue(n->nic, i);
+
+        if (!nc->peer) {
+            return VIRTIO_NET_ERR;
+        }
+
+        if (nc->peer->info->type != NET_CLIENT_DRIVER_TAP) {
+            return VIRTIO_NET_ERR;
+        }
+            vhost_net_get_fd(nc->peer);
+            ret = nc->peer->info->set_bpf_filter(nc->peer, bpf_fd, BPF_TYPE_STEERING);
+    }
+    return ret;
+}
 
 static int virtio_net_ctrl_sm_rss(VirtIONet *n, uint32_t cmd,
                                 struct iovec *iov, unsigned int iov_cnt,
@@ -1034,7 +1131,7 @@ static int virtio_net_ctrl_sm_rss(VirtIONet *n, uint32_t cmd,
             g_free(n->rss_conf->ptrs.indirection_table);
             return VIRTIO_NET_ERR;
         }
-        /* do bpf magic */
+        virtio_net_rss_assign_bpf_filter(n);
         break;
     default:
         return VIRTIO_NET_ERR;
