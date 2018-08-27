@@ -129,7 +129,7 @@ uint64_t vhost_net_get_acked_features(VHostNetState *net)
     return net->dev.acked_features;
 }
 
-static int vhost_net_get_fd(NetClientState *backend)
+int vhost_net_get_fd(NetClientState *backend)
 {
     switch (backend->info->type) {
     case NET_CLIENT_DRIVER_TAP:
