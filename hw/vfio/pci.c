@@ -220,6 +220,12 @@ static void vfio_intx_disable_kvm(VFIOPCIDevice *vdev)
 #endif
 }
 
+bool vfio_is_vfio_pci(PCIDevice* pdev)
+{
+    VFIOPCIDevice *vdev = DO_UPCAST(VFIOPCIDevice, pdev, pdev);
+    return vdev->vbasedev.type == VFIO_DEVICE_TYPE_PCI;
+}
+
 static void vfio_intx_update(PCIDevice *pdev)
 {
     VFIOPCIDevice *vdev = DO_UPCAST(VFIOPCIDevice, pdev, pdev);

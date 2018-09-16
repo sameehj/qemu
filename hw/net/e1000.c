@@ -36,6 +36,8 @@
 #include "qemu/range.h"
 
 #include "e1000x_common.h"
+#include "hw/virtio/virtio-net.h"
+#include "hw/virtio/virtio-pci.h"
 
 static const uint8_t bcast[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
@@ -118,6 +120,7 @@ typedef struct E1000State_st {
     bool mit_timer_on;         /* Mitigation timer is running. */
     bool mit_irq_level;        /* Tracks interrupt pin level. */
     uint32_t mit_ide;          /* Tracks E1000_TXD_CMD_IDE bit. */
+    char *primary_id_str;
 
 /* Compatibility flags for migration to/from qemu 1.3.0 and older */
 #define E1000_FLAG_AUTONEG_BIT 0
@@ -1652,9 +1655,16 @@ static void e1000_write_config(PCIDevice *pci_dev, uint32_t address,
     }
 }
 
+static bool standby_device_present(const char *id,
+        struct PCIDevice **pdev)
+{
+    return pci_qdev_find_device(id, pdev) >= 0;
+}
+
 static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
+    PCIDevice *standby_pci_dev;
     E1000State *d = E1000(pci_dev);
     uint8_t *pci_conf;
     uint8_t *macaddr;
@@ -1690,6 +1700,12 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 
     d->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, e1000_autoneg_timer, d);
     d->mit_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, e1000_mit_timer, d);
+    if (d->primary_id_str && standby_device_present(
+            d->primary_id_str, &standby_pci_dev) && standby_pci_dev) {
+        VirtIOPCIProxy *proxy = VIRTIO_PCI(standby_pci_dev);
+        VirtIODevice *vdev = virtio_bus_get_device(&proxy->bus);
+        virtio_net_register_primary_device(DEVICE(vdev));
+    }
 }
 
 static void qdev_e1000_reset(DeviceState *dev)
@@ -1708,6 +1724,7 @@ static Property e1000_properties[] = {
                     compat_flags, E1000_FLAG_MAC_BIT, true),
     DEFINE_PROP_BIT("migrate_tso_props", E1000State,
                     compat_flags, E1000_FLAG_TSO_BIT, true),
+    DEFINE_PROP_STRING("primary", E1000State, primary_id_str),
     DEFINE_PROP_END_OF_LIST(),
 };
 

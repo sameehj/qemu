@@ -195,5 +195,6 @@ int vfio_spapr_create_window(VFIOContainer *container,
                              hwaddr *pgsize);
 int vfio_spapr_remove_window(VFIOContainer *container,
                              hwaddr offset_within_address_space);
+bool vfio_is_vfio_pci(PCIDevice* pdev);
 
 #endif /* HW_VFIO_VFIO_COMMON_H */

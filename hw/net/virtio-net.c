@@ -26,7 +26,9 @@
 #include "qapi/qapi-events-net.h"
 #include "hw/virtio/virtio-access.h"
 #include "migration/misc.h"
+#include "hw/pci/pci.h"
 #include "standard-headers/linux/ethtool.h"
+#include "hw/vfio/vfio-common.h"
 
 #define VIRTIO_NET_VM_VERSION    11
 
@@ -720,6 +722,23 @@ static void virtio_net_set_features(VirtIODevice *vdev, uint64_t features)
         memset(n->vlans, 0, MAX_VLAN >> 3);
     } else {
         memset(n->vlans, 0xff, MAX_VLAN >> 3);
+    }
+
+    if (virtio_has_feature(features, VIRTIO_NET_F_STANDBY)) {
+        Error * errp;
+        DeviceState *pdev = DEVICE(n->primary_pdev);
+        DeviceClass *klass = DEVICE_GET_CLASS(pdev);
+
+        /* Plug the primary device back to the pci bus */
+        if (klass->hotpluggable && n->primary_parent_bus)
+        {
+            BusState *qbus = BUS(n->primary_parent_bus);
+            // qemu crashes if the parent of the unplugged device is unset
+            // so let' set it here
+            pdev->parent_bus = qbus;
+            hotplug_handler_plug(qbus->hotplug_handler, pdev,
+                    &errp);
+        }
     }
 }
 
@@ -1946,6 +1965,52 @@ void virtio_net_set_netclient_name(VirtIONet *n, const char *name,
     n->netclient_type = g_strdup(type);
 }
 
+static bool primary_device_present(const char *id, struct PCIDevice **pdev)
+{
+    return pci_qdev_find_device(id, pdev) >= 0 &&
+    vfio_is_vfio_pci(*pdev);
+}
+
+
+static void primary_device_realize(DeviceListener *listener,
+			       DeviceState *dev)
+{
+    VirtIONet *n = container_of(listener, VirtIONet, primary_listener);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_DEVICE) && dev->id
+    && !strcmp(dev->id, n->net_conf.standby_id_str))
+    {
+        Error *errp;
+        DeviceClass *klass = DEVICE_GET_CLASS(dev);
+
+        if (n->primary_pdev == NULL)
+        {
+            n->primary_pdev = PCI_DEVICE(dev);
+        }
+
+        if (n->primary_parent_bus == NULL)
+        {
+            n->primary_parent_bus = qdev_get_parent_bus(dev);
+        }
+
+        /* Hide standby from pci till the feature is acked */
+        if (klass->hotpluggable && n->primary_parent_bus)
+        {
+            object_ref(OBJECT(dev));
+            qdev_simple_device_unplug_cb(NULL ,dev, &errp);
+            n->host_features |= (1ULL << VIRTIO_NET_F_STANDBY);
+        }
+    }
+}
+
+void virtio_net_register_primary_device(DeviceState *dev)
+{
+    VirtIONet *n = VIRTIO_NET(dev);
+    n->primary_listener.realize = primary_device_realize;
+    n->primary_listener.unrealize = NULL;
+    device_listener_register(&n->primary_listener);
+}
+
 static void virtio_net_device_realize(DeviceState *dev, Error **errp)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
@@ -1974,6 +2039,11 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "'speed' must be between 0 and INT_MAX");
     } else if (n->net_conf.speed >= 0) {
         n->host_features |= (1ULL << VIRTIO_NET_F_SPEED_DUPLEX);
+    }
+
+    if (n->net_conf.standby_id_str && primary_device_present(
+        n->net_conf.standby_id_str, &n->primary_pdev)) {
+        virtio_net_register_primary_device(dev);
     }
 
     virtio_net_set_config_size(n, n->host_features);
@@ -2198,6 +2268,7 @@ static Property virtio_net_properties[] = {
                      true),
     DEFINE_PROP_INT32("speed", VirtIONet, net_conf.speed, SPEED_UNKNOWN),
     DEFINE_PROP_STRING("duplex", VirtIONet, net_conf.duplex_str),
+    DEFINE_PROP_STRING("standby", VirtIONet, net_conf.standby_id_str),
     DEFINE_PROP_END_OF_LIST(),
 };
 
