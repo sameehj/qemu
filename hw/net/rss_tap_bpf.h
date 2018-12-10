@@ -14,6 +14,9 @@
 #ifndef RSS_TAP_BPF_H
 #define RSS_TAP_BPF_H
 
+#define RSS_MAX_KEY_SIZE 40
+#define RSS_MAX_INDIRECTION_SIZE 40
+
 /* hashed fields for RSS */
 enum hash_field {
   HASH_FIELD_IPV4_L3,  /* IPv4 src/dst addr */

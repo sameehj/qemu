@@ -982,25 +982,76 @@ static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
         return syscall(__NR_bpf, cmd, attr, size);
 }
 
-static int rss_load_bpf_program(int map_fd)
+static int rss_load_bpf_program(int map_fd, int map_key_fd,
+        int map_indirection_fd)
 {
     int ret = 0;
     union bpf_attr attr = {};
+    #define BUFF_LEN 1000000
+	FILE * pFile;
+	char buffer[BUFF_LEN];
+    int i = 0;
+    int load_insns_count = 0;
 
+    memset(buffer, 0, BUFF_LEN);
     /* Insert map fd to the bpf filter program */
-    l3_l4_hash_insns[3].imm = 0;
-    l3_l4_hash_insns[8].imm = map_fd;
+    for (i = 0; i < ARRAY_SIZE(l3_l4_hash_insns); i++ )
+    {
+        if (l3_l4_hash_insns[i].imm == 0x18)
+        {
+            if (load_insns_count == 0)
+            {
+                l3_l4_hash_insns[i].imm = 0;
+            }
+            else if (load_insns_count == 1)
+            {
+                l3_l4_hash_insns[i].imm = map_fd;
+            }
+            else if (load_insns_count > 2 && load_insns_count < 2 + RSS_MAX_KEY_SIZE)
+            {
+                l3_l4_hash_insns[i].imm = map_key_fd;
+            }
+            else
+            {
+                l3_l4_hash_insns[i].imm = map_indirection_fd;
+            }
+            if (load_insns_count != 2)
+            {
+                l3_l4_hash_insns[i].dst_reg = 0x1;
+                l3_l4_hash_insns[i].src_reg = 0x1;
+            }
+            load_insns_count++;
+        }
+    }
 
     memset(&attr, 0, sizeof(attr));
     attr.prog_type = BPF_PROG_TYPE_SOCKET_FILTER;
     attr.insn_cnt = ARRAY_SIZE(l3_l4_hash_insns);
     attr.insns = (__u64) (unsigned long) (l3_l4_hash_insns);
     attr.license = (__u64) (unsigned long) ("Dual BSD/GPL");
+	attr.log_buf = (__u64) (unsigned long) (buffer);
+    attr.log_level = 7;
+	attr.log_size = BUFF_LEN;
+	attr.kern_version = 0;
 
     ret = sys_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
+    if ( ret < 0)
+    {
+            printf("Oh dear, something went wrong with read()! %s\n", strerror(errno));
+        for (int i = 0; i < ARRAY_SIZE(l3_l4_hash_insns); i++)
+        {
+         //  printf("il3_l4_hash_insns[%d] = 0x%x, imm = 0x%x \n",i, l3_l4_hash_insns[i].code, l3_l4_hash_insns[i].imm );
+        }
+    }
+    printf("ret = %d\n",ret);
+    printf("ARRAY_SIZE= %lu \n",ARRAY_SIZE(l3_l4_hash_insns));
+    pFile = fopen ("bpf.out", "wb");
+	fwrite(buffer, BUFF_LEN, 1, pFile);
+	fclose(pFile);
 
     return ret;
 }
+
 
 static int rss_create_map(VirtIONet *n, size_t size)
 {
@@ -1034,8 +1085,9 @@ static int virtio_net_rss_assign_bpf_filter(VirtIONet *n)
 {
     NetClientState *nc;
     struct rss_key rss_bpf_key_map;
-    int i = 0;
     int map_fd = 0;
+    int map_key_fd = 0;
+    int map_indirection_fd = 0;
     int ret = 0;
 
     if (n->rss_conf) {
@@ -1046,27 +1098,44 @@ static int virtio_net_rss_assign_bpf_filter(VirtIONet *n)
         rss_bpf_key_map.key = n->rss_conf->ptrs.hash_key;
         rss_bpf_key_map.key_size = n->rss_conf->hash_key_length;
         map_fd = rss_create_map(n, sizeof(rss_bpf_key_map));
+        map_key_fd = rss_create_map(n, sizeof(uint32_t));
+        map_indirection_fd = rss_create_map(n, sizeof(uint32_t));
     }
 
-    if (map_fd <= 0) {
+    if (map_fd <= 0 || map_key_fd < 0 || map_indirection_fd < 0) {
         return -1;
     }
 
     rss_update_map(map_fd, 0, &rss_bpf_key_map);
-    int bpf_fd = rss_load_bpf_program(map_fd);
-    for (i = 0; i < n->curr_queues ; i++) {
-        nc = qemu_get_subqueue(n->nic, i);
-
-        if (!nc->peer) {
-            return VIRTIO_NET_ERR;
-        }
-
-        if (nc->peer->info->type != NET_CLIENT_DRIVER_TAP) {
-            return VIRTIO_NET_ERR;
-        }
-            vhost_net_get_fd(nc->peer);
-            ret = nc->peer->info->set_bpf_filter(nc->peer, bpf_fd, BPF_TYPE_STEERING);
+    /* We store the keys of the rss in uint32_t instead of uint8_t
+     * in order to group them togther so we'd use less bpf map calls
+     * in the bpf program as the bpf program is restricted to 4096
+     * instructions and for loops must be unrolled */
+    for (int i = 0; i < rss_bpf_key_map.key_size % 10; i++)
+    {
+        uint8_t * key = n->rss_conf->ptrs.hash_key;
+        uint32_t entry = (key[i] << 24) | (key[i + 1] << 16) |
+            (key[i + 2] << 8) | (key[i + 3]);
+        rss_update_map(map_key_fd, &i, &entry);
     }
+    for (int i = 0; i < rss_bpf_key_map.indirection_table_size; i++)
+    {
+         rss_update_map(map_indirection_fd, &i, &rss_bpf_key_map);
+    }
+    int bpf_fd = rss_load_bpf_program(map_fd, map_key_fd, map_indirection_fd);
+    nc = qemu_get_subqueue(n->nic, 0);
+
+    if (!nc->peer) {
+        return VIRTIO_NET_ERR;
+    }
+
+    if (nc->peer->info->type != NET_CLIENT_DRIVER_TAP) {
+        return VIRTIO_NET_ERR;
+    }
+
+    vhost_net_get_fd(nc->peer);
+    ret = nc->peer->info->set_bpf_filter(nc->peer, bpf_fd, BPF_TYPE_STEERING);
+
     return ret;
 }
 
